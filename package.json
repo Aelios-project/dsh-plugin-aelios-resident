@@ -1,13 +1,13 @@
 {
   "name": "@aelios/dsh-resident",
-  "version": "0.2.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
   "description": "Resident desktop UI with native DSH background helpers.",
   "engines": { "node": ">=22", "dsh": ">=0.2.1-rc.3 <0.3.0" },
   "exports": {
-    ".": "./index.js", "./client": "./client.js", "./helper": "./helper.js",
+    ".": "./index.js", "./client": "./client.js", "./helper": "./helper.js", "./helper-full": "./helper-full.js",
     "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg",
     "./helper/locale/*.json": "./locale/helper/*.json", "./helper/icon": "./icon.svg"
   },

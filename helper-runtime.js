@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { approvedRoot, redactText } from './helper-tools.js';
-import { HELPER_PRESET, pinHelperPolicy } from './helper.js';
+import { helperAccess, helperPreset, pinHelperPolicy } from './helper-policy.js';
 
 const FINAL = new Set(['completed', 'failed', 'needs_you']);
 const keyOf = (...parts) => JSON.stringify(parts);
@@ -88,19 +88,19 @@ export class NativeHelpers {
     try {
       const grant = await this.store.workspace({ connectionId: input.connectionId, resident: input.resident, deviceId: input.deviceId });
       if (grant?.approved !== true) return { status: 'needs_you', code: 'WORKSPACE_REQUIRED', summary: '请先在可信 DSH 面板中选择并授权本机目录。' };
-      const root = await approvedRoot(grant.path);
+      const root = await approvedRoot(grant.path), access = helperAccess(grant.access), preset = helperPreset(access);
       if (input.workspace !== undefined && await approvedRoot(input.workspace) !== root) throw new Error('Workspace grant changed');
-      const threadKey = keyOf(input.connectionId, input.resident, input.deviceId, input.thread, root);
+      const threadKey = access === 'full' ? keyOf(input.connectionId, input.resident, input.deviceId, input.thread, root, access) : keyOf(input.connectionId, input.resident, input.deviceId, input.thread, root);
       const reservation = await this.mutate(state => {
         const existing = state.jobs[jobKey];
         if (existing) {
-          if (existing.deviceId !== input.deviceId || existing.thread !== input.thread || existing.workspace !== root || existing.instruction !== input.instruction) return { conflict: true };
+          if (existing.deviceId !== input.deviceId || existing.thread !== input.thread || existing.workspace !== root || helperAccess(existing.access) !== access || existing.instruction !== input.instruction) return { conflict: true };
           return { existing };
         }
         if (Object.values(state.jobs).some(value => value.threadKey === threadKey && (!FINAL.has(value.status) || value.code === 'OUTCOME_UNKNOWN'))) return { busy: true };
         const sessionId = state.threads[threadKey] || `session-aelios-${randomUUID()}`;
         const fresh = !state.threads[threadKey];
-        job = { ...input, workspace: root, threadKey, sessionId, requestId: `aelios-job-${randomUUID()}`, status: 'preparing', createdAt: Date.now() };
+        job = { ...input, workspace: root, access, threadKey, sessionId, requestId: `aelios-job-${randomUUID()}`, status: 'preparing', createdAt: Date.now() };
         delete job.title;
         state.jobs[jobKey] = job; state.threads[threadKey] = sessionId;
         return { job, fresh };
@@ -114,20 +114,20 @@ export class NativeHelpers {
       job = reservation.job;
       if (this.disposed) throw new Error('Bridge stopped');
       let agent = this.ctx.agents.get(job.sessionId);
-      if (agent && (agent.session.header.cwd !== root || agent.session.header.agentPreset !== HELPER_PRESET)) throw new Error('Session binding changed');
+      if (agent && (agent.session.header.cwd !== root || agent.session.header.agentPreset !== preset)) throw new Error('Session binding changed');
       if (agent?.status === 'running') throw new Error('Session is busy');
       const setup = async (agentCtx, created) => {
-        await this.ctx.agentPresets.mount(agentCtx, HELPER_PRESET);
-        pinHelperPolicy(created.session);
+        await this.ctx.agentPresets.mount(agentCtx, preset);
+        pinHelperPolicy(created.session, access);
       };
       if (!agent) {
         const options = { agentOptions: { ...this.ctx.agentDefaultModel.currentSelection() }, setup };
         let handle;
         if (reservation.fresh) {
-          handle = await this.ctx.agents.create({ ...options, sessionId: job.sessionId, meta: { cwd: root, agentPreset: HELPER_PRESET } });
+          handle = await this.ctx.agents.create({ ...options, sessionId: job.sessionId, meta: { cwd: root, agentPreset: preset } });
         } else {
           const old = await this.ctx.sessionController.inspect(job.sessionId);
-          if (old.meta.cwd !== root || old.meta.agentPreset !== HELPER_PRESET || pendingWork(old.events)) throw new Error('Session requires reconciliation');
+          if (old.meta.cwd !== root || old.meta.agentPreset !== preset || pendingWork(old.events)) throw new Error('Session requires reconciliation');
           handle = await this.ctx.agents.resume({ ...options, resumeSessionId: job.sessionId });
         }
         if (this.disposed) { await handle.dispose(); throw new Error('Bridge stopped'); }
@@ -153,9 +153,26 @@ export class NativeHelpers {
       return { ...(job ? { sessionId: job.sessionId } : {}), ...result };
     }
   }
+  cancelOwnedTree(sessionId, kind = 'user') {
+    const root = this.ctx.agents.get(sessionId);
+    if (!root) return;
+    const owned = [root], seen = new Set([root.id]);
+    if (typeof this.ctx.agents.list === 'function' && typeof this.ctx.agents.isOwnedBy === 'function') {
+      const live = this.ctx.agents.list();
+      for (let i = 0; i < owned.length; i++) {
+        for (const candidate of live) {
+          if (seen.has(candidate.id) || !this.ctx.agents.isOwnedBy(candidate.id, owned[i])) continue;
+          seen.add(candidate.id); owned.push(candidate);
+        }
+      }
+    }
+    // Stop deepest descendants before their owner. This also covers helpers
+    // resumed by the ordinary UI for which this bridge holds no AgentHandle.
+    for (const agent of owned.reverse()) agent.cancel({ kind });
+  }
   async stop(input) {
     const job = await this.lookup(input);
-    this.ctx.agents.get(job.sessionId)?.cancel({ kind: 'user' });
+    this.cancelOwnedTree(job.sessionId);
     return { sessionId: job.sessionId, requested: true };
   }
   async stopBinding({ connectionId, resident, deviceId }) {
@@ -169,7 +186,7 @@ export class NativeHelpers {
       return [...ids];
     });
     for (const sessionId of sessionIds) {
-      this.ctx.agents.get(sessionId)?.cancel({ kind: 'user' });
+      this.cancelOwnedTree(sessionId);
       const handle = this.handles.get(sessionId);
       if (handle) {
         this.handles.delete(sessionId);
@@ -180,7 +197,7 @@ export class NativeHelpers {
   }
   async dispose() {
     this.disposed = true;
-    for (const handle of this.handles.values()) handle.agent.cancel({ kind: 'disposed' });
+    for (const handle of this.handles.values()) this.cancelOwnedTree(handle.agent.id, 'disposed');
     await this.mutate(state => { for (const job of Object.values(state.jobs)) if (!FINAL.has(job.status)) Object.assign(job, { status: 'needs_you', code: 'OUTCOME_UNKNOWN', summary: '本机执行桥已停止，请检查原会话后再继续。' }); });
     // Cordis owns exact handle teardown. Observe disposal without blocking plugin teardown on an uncooperative provider.
     for (const handle of this.handles.values()) void handle.dispose().catch(() => {});
