@@ -2,6 +2,7 @@ import { API_PATH, BridgeError, ResidentBridge, residentPath } from './bridge.js
 import { CredentialState, requireConnection } from './state.js';
 import { DesktopProxy } from './desktop-proxy.js';
 import { NativeHelpers } from './helper-runtime.js';
+import { HELPER_PRESET } from './helper.js';
 import { DeviceRunner, initialDeviceState } from './device-runner.js';
 
 export const inject = ['connection', 'credentials', 'tools', 'agents', 'agentPresets', 'agentDefaultModel', 'sessionController', 'sessionPersistence'];
@@ -76,6 +77,15 @@ export function apply(ctx) {
   };
   ctx.provide('aeliosResident', bridge);
   ctx.provide('aeliosDesktop', facade);
+  // Anchor the preset child to this installed package, independently of the Host
+  // Loader's module-resolution base. Cordis owns the registration's exact disposer.
+  ctx.effect(async () => await ctx.agentPresets.register({
+    id: HELPER_PRESET,
+    name: 'Resident Local Helper',
+    description: 'Read-only assistance inside an explicitly selected local workspace.',
+    order: 90,
+    plugins: [{ id: 'resident-workspace', name: new URL('./helper.js', import.meta.url).href, config: {} }]
+  }));
   ctx.effect(() => {
     const abort = new AbortController();
     void runner.start(abort.signal).catch(() => {});
