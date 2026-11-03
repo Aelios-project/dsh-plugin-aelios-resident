@@ -2,7 +2,8 @@ import { API_PATH, BridgeError, ResidentBridge, residentPath } from './bridge.js
 import { CredentialState, requireConnection } from './state.js';
 import { DesktopProxy } from './desktop-proxy.js';
 import { NativeHelpers } from './helper-runtime.js';
-import { HELPER_PRESET } from './helper.js';
+import { HELPER_PRESET, FULL_HELPER_PRESET, helperAccess } from './helper-policy.js';
+import { fullHelperPlugins } from './helper-full.js';
 import { DeviceRunner, initialDeviceState } from './device-runner.js';
 
 export const inject = ['connection', 'credentials', 'tools', 'agents', 'agentPresets', 'agentDefaultModel', 'sessionController', 'sessionPersistence'];
@@ -17,14 +18,30 @@ export function apply(ctx) {
   });
   runner = new DeviceRunner(bridge, helpers, deviceState);
   const facade = {
-    async authorizeSession({ sessionId, workspace }) {
+    async authorizeSession({ sessionId, workspace, access = 'read-only' }) {
       const records = (await helperState.read()).nativeHelpers?.jobs || {};
       const connection = await bridge.connection();
       if (!connection) return false;
       for (const job of Object.values(records)) {
-        if (job.sessionId !== sessionId || job.connectionId !== connection.connectionId || job.workspace !== workspace) continue;
+        if (job.connectionId !== connection.connectionId || helperAccess(job.access) !== access) continue;
+        let related = job.sessionId === sessionId && job.workspace === workspace;
+        if (!related && access === 'full') {
+          const root = ctx.agents.get(job.sessionId);
+          const target = ctx.agents.get(sessionId);
+          if (root && target) {
+            const descendants = [root], seen = new Set([root.id]);
+            for (let i = 0; i < descendants.length && !related; i++) {
+              for (const candidate of ctx.agents.list()) {
+                if (seen.has(candidate.id) || !ctx.agents.isOwnedBy(candidate.id, descendants[i])) continue;
+                seen.add(candidate.id); descendants.push(candidate);
+                if (candidate === target) { related = true; break; }
+              }
+            }
+          }
+        }
+        if (!related) continue;
         const grant = await runner.workspace(job);
-        if (grant?.approved && grant.path === workspace) return true;
+        if (grant?.approved && grant.path === job.workspace && helperAccess(grant.access) === access) return true;
       }
       return false;
     },
@@ -85,6 +102,13 @@ export function apply(ctx) {
     description: 'Read-only assistance inside an explicitly selected local workspace.',
     order: 90,
     plugins: [{ id: 'resident-workspace', name: new URL('./helper.js', import.meta.url).href, config: {} }]
+  }));
+  ctx.effect(async () => await ctx.agentPresets.register({
+    id: FULL_HELPER_PRESET,
+    name: 'Resident Full Local Helper',
+    description: 'Native file editing, commands, network and delegation after an explicit full-access grant.',
+    order: 91,
+    plugins: fullHelperPlugins()
   }));
   ctx.effect(() => {
     const abort = new AbortController();

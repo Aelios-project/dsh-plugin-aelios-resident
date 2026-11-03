@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { NativeHelpers, outcomeFromEvents } from '../helper-runtime.js';
-import { HELPER_PRESET } from '../helper.js';
+import { HELPER_PRESET, FULL_HELPER_PRESET } from '../helper.js';
 
 async function fixture(t, options = {}) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'aelios-helper-test-')));
@@ -12,7 +12,7 @@ async function fixture(t, options = {}) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   let state = { otherData: 'preserved' };
   const agents = new Map(), persisted = new Map(), trace = [];
-  const store = { read: async () => structuredClone(state), write: async next => { state = structuredClone(next); trace.push('store'); }, workspace: async () => options.unapproved ? null : { path: root, approved: true } };
+  const store = { read: async () => structuredClone(state), write: async next => { state = structuredClone(next); trace.push('store'); }, workspace: async () => options.unapproved ? null : { path: root, approved: true, access: options.access } };
   function session(id, header, events = []) {
     return { id, header, snapshotEvents: () => structuredClone(events), append(type, data) { const event = { seq: events.length, type, data }; events.push(event); return event; } };
   }
@@ -31,7 +31,7 @@ async function fixture(t, options = {}) {
   }
   const ctx = {
     agents: { get: id => agents.get(id), create: config => build(config, false), resume: config => build(config, true) },
-    agentPresets: { mount: async (_ctx, id) => { assert.equal(id, HELPER_PRESET); trace.push('preset'); } },
+    agentPresets: { mount: async (_ctx, id) => { assert.equal(id, options.access === 'full' ? FULL_HELPER_PRESET : HELPER_PRESET); trace.push('preset'); } },
     agentDefaultModel: { currentSelection: () => ({ provider: 'test', model: 'fake' }) },
     sessionPersistence: { flush: async () => { trace.push('flush'); } },
     sessionController: {
@@ -42,9 +42,9 @@ async function fixture(t, options = {}) {
         const saved = Object.values(state.nativeHelpers.jobs).find(job => job.sessionId === request.sessionId && job.requestId === request.requestId);
         assert.ok(saved, 'mapping persisted before prompt');
         const agent = agents.get(request.sessionId), value = agent.session;
-        assert.equal(value.header.agentPreset, HELPER_PRESET); assert.equal(value.header.cwd, root);
+        assert.equal(value.header.agentPreset, options.access === 'full' ? FULL_HELPER_PRESET : HELPER_PRESET); assert.equal(value.header.cwd, root);
         const knobs = value.snapshotEvents();
-        assert.equal(knobs.findLast(e => e.type === 'sandbox/mode').data.mode, 'read-only');
+        assert.equal(knobs.findLast(e => e.type === 'sandbox/mode').data.mode, options.access === 'full' ? 'danger-full-access' : 'read-only');
         assert.equal(knobs.findLast(e => e.type === 'approval/policy').data.policy, 'never');
         agent.status = 'running';
         const turn = value.snapshotEvents().filter(e => e.type === 'turn/start').length + 1;
@@ -60,6 +60,18 @@ async function fixture(t, options = {}) {
   const input = { connectionId: 'connection-one', resident: 'default', deviceId: 'device-one', id: 'job-one', thread: 'thread-one', title: 'Inspect reports', instruction: 'List reports', workspace: root };
   return { root, ctx, store, input, trace, agents, persisted, state: () => structuredClone(state), replace: value => state = structuredClone(value), runtime: new NativeHelpers(ctx, store) };
 }
+test('explicit full grant selects a distinct full-access session; legacy grants retain read-only policy', async t => {
+  const options = { access: undefined }, f = await fixture(t, options);
+  const read = await f.runtime.run(f.input);
+  assert.equal(Object.values(f.state().nativeHelpers.jobs)[0].access, 'read-only');
+  options.access = 'full';
+  const full = await f.runtime.run({ ...f.input, id: 'full-job' });
+  assert.equal(full.status, 'completed'); assert.notEqual(full.sessionId, read.sessionId);
+  assert.equal(f.agents.get(full.sessionId).session.header.agentPreset, FULL_HELPER_PRESET);
+  assert.equal(Object.values(f.state().nativeHelpers.jobs).find(j => j.id === 'full-job').access, 'full');
+  assert.equal((await f.runtime.run(f.input)).code, 'JOB_CONFLICT', 'old job IDs cannot be replayed at higher privilege');
+});
+
 test('creates ordinary independent helper, persists before started/prompt and reports matched completion', async t => {
   const f = await fixture(t);
   const result = await f.runtime.run(f.input, async id => { f.trace.push('started'); assert.ok(Object.values(f.state().nativeHelpers.jobs).some(job => job.sessionId === id)); });

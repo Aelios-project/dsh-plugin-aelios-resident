@@ -10,6 +10,21 @@ const binding = { connectionId: connection.connectionId, resident: 'default', de
 const job = { id: 't_1234567890', thread: 't_1234567890', title: 'Read sample', instruction: 'List filenames only', leaseId: 'lease-1', attempt: 1, protocol: 'resident-dsh/1' };
 const key = scopeKey(connection.connectionId, 'default', binding.deviceId), bindingKey = scopeKey(connection.connectionId, 'default');
 function bridge() { return { async connection() { return connection; }, async status() { return { connected: true, url: connection.url, connectionId: connection.connectionId }; } }; }
+test('old grants stay read-only, explicit full access persists and disable removes authority', async () => {
+  const state = memory({ ...initialDeviceState(), bindings: { [bindingKey]: binding } });
+  const upstream = bridge(); upstream.upstream = async (_connection, route) => route.endsWith('/register') ? { deviceId: 'device-full', token: 'synthetic-full', protocol: 'resident-dsh/1' } : { ok: true };
+  const runner = new DeviceRunner(upstream, { async stopBinding() {} }, state);
+  assert.equal((await runner.workspace(binding)).access, 'read-only');
+  await runner.disable({ connectionId: connection.connectionId, resident: 'default' });
+  await runner.enable({ connectionId: connection.connectionId, resident: 'default', workspace: process.cwd(), access: 'full' });
+  const grant = await runner.workspace({ connectionId: connection.connectionId, resident: 'default', deviceId: 'device-full' });
+  assert.equal(grant.access, 'full'); assert.equal((await runner.snapshot()).bindings[0].access, 'full');
+  assert.equal((await state.read()).bindings[bindingKey].access, 'full');
+  await runner.disable({ connectionId: connection.connectionId, resident: 'default' });
+  assert.equal(await runner.workspace({ connectionId: connection.connectionId, resident: 'default' }), null);
+  await assert.rejects(runner.enable({ connectionId: connection.connectionId, resident: 'default', workspace: process.cwd(), access: 'everything' }), { code: 'ACCESS' });
+});
+
 test('claim is persisted before native work; events remain durable until ACK and never reach foreground', async () => {
   const state = memory({ ...initialDeviceState(), bindings: { [bindingKey]: binding } });
   const received = [], calls = []; let claimed = false, executions = 0;

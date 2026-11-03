@@ -3,6 +3,7 @@ import { BridgeError, residentPath } from './bridge.js';
 import { boundedBytes } from './desktop-proxy.js';
 import { approvedRoot } from './helper-tools.js';
 import { requireConnection } from './state.js';
+import { helperAccess } from './helper-policy.js';
 
 // Each tick is a heartbeat and a claim on the user's Worker: every 3 s it was about 58k requests a day, most of the
 // Cloudflare free plan's 100k. 15 s keeps a job's pickup quick and well inside the cloud's 5-minute lease.
@@ -16,9 +17,11 @@ export class DeviceRunner {
     const connection = await this.bridge.connection();
     if (!connection || connection.connectionId !== connectionId) return null;
     const binding = (await this.state.read()).bindings?.[scopeKey(connectionId, resident)];
-    return binding?.enabled && (!deviceId || binding.deviceId === deviceId) ? { path: binding.workspace, approved: true } : null;
+    return binding?.enabled && (!deviceId || binding.deviceId === deviceId) ? { path: binding.workspace, approved: true, access: helperAccess(binding.access) } : null;
   }
   async enable(input, signal) {
+    if (input.access !== undefined && input.access !== 'full' && input.access !== 'read-only') throw new BridgeError('ACCESS', '请选择有效的本机权限。');
+    const access = helperAccess(input.access);
     const connection = await this.current(input.connectionId), prefix = residentPath(input.resident);
     if (typeof input.workspace !== 'string' || !path.isAbsolute(input.workspace)) throw new BridgeError('WORKSPACE', '请在 DSH 中选择一个本机工作区。');
     let workspace;
@@ -34,13 +37,13 @@ export class DeviceRunner {
     try {
       await this.state.update(state => {
         Object.assign(state, { version: 1 }); state.bindings ||= {}; state.jobs ||= {}; state.outbox ||= [];
-        state.bindings[key] = { resident: input.resident, connectionId: connection.connectionId, deviceId: paired.deviceId, token: paired.token, workspace, enabled: true };
+        state.bindings[key] = { resident: input.resident, connectionId: connection.connectionId, deviceId: paired.deviceId, token: paired.token, workspace, access, enabled: true };
       });
     } catch (error) {
       await this.bridge.upstream(connection, prefix + '/web/desktop/revoke', { body: { deviceId: paired.deviceId }, signal: AbortSignal.timeout(10000) }).catch(() => {});
       throw error;
     }
-    return { enabled: true, resident: input.resident, workspaceName: path.basename(workspace), deviceId: paired.deviceId };
+    return { enabled: true, resident: input.resident, workspaceName: path.basename(workspace), deviceId: paired.deviceId, access };
   }
   async disable(input) {
     const connection = await this.current(input.connectionId), key = scopeKey(connection.connectionId, input.resident);
@@ -60,8 +63,8 @@ export class DeviceRunner {
   }
   async snapshot() {
     const status = await this.bridge.status(), state = await this.state.read();
-    return { ...status, desktopProtocol: 'resident-dsh/1', helperMode: 'read-only', error: this.error,
-      bindings: Object.values(state.bindings || {}).filter(b => b.connectionId === status.connectionId).map(b => ({ resident: b.resident, enabled: b.enabled, workspaceName: path.basename(b.workspace), deviceId: b.deviceId })),
+    return { ...status, desktopProtocol: 'resident-dsh/1', helperMode: 'full', error: this.error,
+      bindings: Object.values(state.bindings || {}).filter(b => b.connectionId === status.connectionId).map(b => ({ resident: b.resident, enabled: b.enabled, workspaceName: path.basename(b.workspace), deviceId: b.deviceId, access: helperAccess(b.access) })),
       jobs: Object.values(state.jobs || {}).filter(j => j.connectionId === status.connectionId).map(j => ({ id: j.job.id, resident: j.resident, title: j.job.title, phase: j.phase })) };
   }
   async device(connection, binding, action, body, signal) {

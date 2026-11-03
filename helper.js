@@ -1,15 +1,9 @@
 import { HELPER_TOOL, WorkspaceError, workspaceTool } from './helper-tools.js';
 
-export const HELPER_PRESET = 'aelios-resident-helper';
+import { HELPER_PRESET, pinHelperPolicy } from './helper-policy.js';
+export { HELPER_PRESET, FULL_HELPER_PRESET, helperAccess, helperPreset, pinHelperPolicy } from './helper-policy.js';
 export const inject = ['tools', 'systemPrompt'];
 export const name = 'aelios-resident-helper';
-
-// These are the exact durable event setters used by the installed policy packages.
-// Fixed values avoid inheriting the Host/profile or initiating session's permissions.
-export function pinHelperPolicy(session) {
-  session.append('sandbox/mode', { mode: 'read-only' });
-  session.append('approval/policy', { policy: 'never' });
-}
 export function apply(ctx) {
   const authorize = async agent => {
     const workspace = agent?.session.header.cwd;
