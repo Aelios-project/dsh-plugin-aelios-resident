@@ -4,6 +4,9 @@ import { boundedBytes } from './desktop-proxy.js';
 import { approvedRoot } from './helper-tools.js';
 import { requireConnection } from './state.js';
 
+// Each tick is a heartbeat and a claim on the user's Worker: every 3 s it was about 58k requests a day, most of the
+// Cloudflare free plan's 100k. 15 s keeps a job's pickup quick and well inside the cloud's 5-minute lease.
+const TICK_MS = 15000;
 const scopeKey = (connectionId, resident, deviceId) => `${connectionId}/${resident}${deviceId ? '/' + deviceId : ''}`;
 const empty = () => ({ version: 1, bindings: {}, jobs: {}, outbox: [] });
 export class DeviceRunner {
@@ -160,7 +163,7 @@ export class DeviceRunner {
     while (!signal.aborted) {
       await this.tick(signal).catch(() => { this.error = '本机帮手暂时不可用。'; });
       if (signal.aborted) break;
-      await new Promise(resolve => { const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); }; const timer = setTimeout(finish, 3000); signal.addEventListener('abort', finish, { once: true }); });
+      await new Promise(resolve => { const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); }; const timer = setTimeout(finish, TICK_MS); signal.addEventListener('abort', finish, { once: true }); });
     }
   }
 }

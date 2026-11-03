@@ -1,10 +1,10 @@
 {
   "repository": "https://github.com/Aelios-project/Aelios-resident",
-  "revision": "52573308ecdfd7136e544768ef9605fe39229a6c",
+  "revision": "45989f896421688825cc2aaa31bbbb0b658f6864",
   "hashes": {
-    "index.html": "ff58033c1fc8256707634fbbd45f18f611bd4d89a08b50cf507d831ef4854661",
-    "app.js": "4aaef4e215c21b00b4dd9de2b095e2a7e863fd05ec4bcb64cd0f19948d7c812b",
-    "app.css": "356153900266a1ee8969f5e87a43f67395e0ee203e5146706d9399e772bb3278",
+    "index.html": "9336757d229a773ec13fa06e331a35b036b65756a71b1086c9c577fe50ad7ef1",
+    "app.js": "f2a1f5a102247ae9516de7d26a294005c9a54488f20da9c4947dbada8ff08f2a",
+    "app.css": "6664c8845a76e2b9e2c3608a3e08dfe1c1698ffe0c4902b942bd26dc7f53f45a",
     "desktop.js": "78791af9ee45cabb637bf0ba0f9131c42ca403d3505a55feb12e0427502d6014",
     "markdown.js": "24549309be393a5fe1beaf72493bef081db0efd6e749bc6bba9ad55347437b8f",
     "group.js": "66cb0bd22be32841a41d258e26d30fa54c083328dabf65086e36b7421ae585c7",
