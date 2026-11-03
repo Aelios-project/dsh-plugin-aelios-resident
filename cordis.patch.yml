@@ -1,0 +1,4 @@
+- insert:
+    - id: aelios-resident
+      name: '@aelios/dsh-resident'
+      config: {}

@@ -1,0 +1,20 @@
+{
+  "name": "@aelios/dsh-resident",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "description": "Resident desktop UI with native DSH background helpers.",
+  "engines": { "node": ">=22", "dsh": ">=0.2.1-rc.3 <0.3.0" },
+  "exports": {
+    ".": "./index.js", "./client": "./client.js", "./helper": "./helper.js",
+    "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg",
+    "./helper/locale/*.json": "./locale/helper/*.json", "./helper/icon": "./icon.svg"
+  },
+  "files": ["*.js", "cordis.patch.yml", "locale", "icon.svg", "LICENSE", "ui", "README.md"],
+  "scripts": { "test": "node --test test/*.mjs", "sync-ui": "node scripts/sync-ui.mjs" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-locale"] }
+  }
+}
