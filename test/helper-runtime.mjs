@@ -146,6 +146,23 @@ test('binding disable cancels completed sessions and disposes only matching owne
   assert.equal(f.agents.has(other.sessionId), true);
   assert.equal(f.trace.filter(item => item === 'dispose').length, 1);
 });
+test('stopping a helper cancels only its exact live ownership tree, descendants first', async () => {
+  const cancelled = [];
+  const root = { id: 'root', cancel: value => cancelled.push(['root', value.kind]) };
+  const child = { id: 'child', cancel: value => cancelled.push(['child', value.kind]) };
+  const grandchild = { id: 'grandchild', cancel: value => cancelled.push(['grandchild', value.kind]) };
+  const unrelated = { id: 'other', cancel() { throw new Error('must not stop unrelated session'); } };
+  const agents = [root, child, grandchild, unrelated];
+  const runtime = new NativeHelpers({ agents: {
+    get: id => agents.find(agent => agent.id === id), list: () => agents,
+    isOwnedBy: (id, owner) => id === 'child' && owner === root || id === 'grandchild' && owner === child
+  } }, {});
+  runtime.cancelOwnedTree('root');
+  assert.deepEqual(cancelled, [['grandchild', 'user'], ['child', 'user'], ['root', 'user']]);
+  runtime.cancelOwnedTree('missing');
+  assert.equal(cancelled.length, 3);
+});
+
 test('stop is explicit and scoped; dispose cancels owned handles without starting or replaying work', async t => {
   const f = await fixture(t); const result = await f.runtime.run(f.input);
   await f.runtime.stop({ connectionId: f.input.connectionId, resident: 'default', jobId: f.input.id });

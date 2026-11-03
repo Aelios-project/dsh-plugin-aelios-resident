@@ -153,9 +153,26 @@ export class NativeHelpers {
       return { ...(job ? { sessionId: job.sessionId } : {}), ...result };
     }
   }
+  cancelOwnedTree(sessionId, kind = 'user') {
+    const root = this.ctx.agents.get(sessionId);
+    if (!root) return;
+    const owned = [root], seen = new Set([root.id]);
+    if (typeof this.ctx.agents.list === 'function' && typeof this.ctx.agents.isOwnedBy === 'function') {
+      const live = this.ctx.agents.list();
+      for (let i = 0; i < owned.length; i++) {
+        for (const candidate of live) {
+          if (seen.has(candidate.id) || !this.ctx.agents.isOwnedBy(candidate.id, owned[i])) continue;
+          seen.add(candidate.id); owned.push(candidate);
+        }
+      }
+    }
+    // Stop deepest descendants before their owner. This also covers helpers
+    // resumed by the ordinary UI for which this bridge holds no AgentHandle.
+    for (const agent of owned.reverse()) agent.cancel({ kind });
+  }
   async stop(input) {
     const job = await this.lookup(input);
-    this.ctx.agents.get(job.sessionId)?.cancel({ kind: 'user' });
+    this.cancelOwnedTree(job.sessionId);
     return { sessionId: job.sessionId, requested: true };
   }
   async stopBinding({ connectionId, resident, deviceId }) {
@@ -169,7 +186,7 @@ export class NativeHelpers {
       return [...ids];
     });
     for (const sessionId of sessionIds) {
-      this.ctx.agents.get(sessionId)?.cancel({ kind: 'user' });
+      this.cancelOwnedTree(sessionId);
       const handle = this.handles.get(sessionId);
       if (handle) {
         this.handles.delete(sessionId);
@@ -180,7 +197,7 @@ export class NativeHelpers {
   }
   async dispose() {
     this.disposed = true;
-    for (const handle of this.handles.values()) handle.agent.cancel({ kind: 'disposed' });
+    for (const handle of this.handles.values()) this.cancelOwnedTree(handle.agent.id, 'disposed');
     await this.mutate(state => { for (const job of Object.values(state.jobs)) if (!FINAL.has(job.status)) Object.assign(job, { status: 'needs_you', code: 'OUTCOME_UNKNOWN', summary: '本机执行桥已停止，请检查原会话后再继续。' }); });
     // Cordis owns exact handle teardown. Observe disposal without blocking plugin teardown on an uncooperative provider.
     for (const handle of this.handles.values()) void handle.dispose().catch(() => {});
