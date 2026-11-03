@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/wusaki0723/Aelios-resident",
+  "revision": "52573308ecdfd7136e544768ef9605fe39229a6c",
+  "hashes": {
+    "index.html": "ff58033c1fc8256707634fbbd45f18f611bd4d89a08b50cf507d831ef4854661",
+    "app.js": "4aaef4e215c21b00b4dd9de2b095e2a7e863fd05ec4bcb64cd0f19948d7c812b",
+    "app.css": "356153900266a1ee8969f5e87a43f67395e0ee203e5146706d9399e772bb3278",
+    "desktop.js": "78791af9ee45cabb637bf0ba0f9131c42ca403d3505a55feb12e0427502d6014",
+    "markdown.js": "24549309be393a5fe1beaf72493bef081db0efd6e749bc6bba9ad55347437b8f",
+    "group.js": "66cb0bd22be32841a41d258e26d30fa54c083328dabf65086e36b7421ae585c7",
+    "models.json": "46d95482343ee3e6d9a1798b828534db2b7f9169ed33d3a1450dea5e11aa0621",
+    "icon-192.png": "0a118bf99f4ff105ff35093aebd8379c6212dc296f7c3c3aa616bb4e1c755537",
+    "icon-512.png": "dbe8adbd6dfcfc611a037cbe9c2703d1a4fafb88070eb28cb44318b21301ddeb",
+    "vendor/alpine-3.14.9.min.js": "3ed1eed252488921df65e363d6715deb04d7f92aaedb9e52199fdf73cb1e0ad3",
+    "vendor/alpine-LICENSE.txt": "574eaf2754ffe89d9da3508e0b57ed2b1c8d7359b6cd3e088c948da1e04dd487"
+  }
+}
