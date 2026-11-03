@@ -38,7 +38,7 @@ npm pack --dry-run
 
 测试覆盖选定目录边界、冷恢复权限、独立原生会话的调度契约、真实 HTTP 重定向拒绝、事件回传、重启不重做及设备重新配对隔离。Host 合同夹具没有伪装成实际模型调用；原版页面文档检查没有伪装成浏览器渲染验收。
 
-原项目与协议说明：[Aelios-resident](https://github.com/wusaki0723/Aelios-resident)。原版 UI 的具体来源记录在发布包的 `ui/SOURCE.json` 中。
+原项目与协议说明：[Aelios-resident](https://github.com/Aelios-project/Aelios-resident)。原版 UI 的具体来源记录在发布包的 `ui/SOURCE.json` 中。
 
 ## English
 

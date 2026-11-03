@@ -16,5 +16,5 @@ for (const file of files) {
   await copyFile(resolve(source, 'public', file), target);
 }
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim();
-await writeFile(resolve(root, 'ui/SOURCE.json'), JSON.stringify({ repository: 'https://github.com/wusaki0723/Aelios-resident', revision, hashes }, null, 2) + '\n');
+await writeFile(resolve(root, 'ui/SOURCE.json'), JSON.stringify({ repository: 'https://github.com/Aelios-project/Aelios-resident', revision, hashes }, null, 2) + '\n');
 console.log(`Copied ${files.length} original Resident assets; hashes recorded in ui/SOURCE.json. Service Worker and cloud execution scripts are excluded.`);
