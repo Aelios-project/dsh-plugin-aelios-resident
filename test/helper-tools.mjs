@@ -67,16 +67,18 @@ test('preset masks inherited tools, denies every other scoped tool, and pins on 
   let guard, tool, listener, section;
   const calls = [];
   apply({ tools: { presentAs: mode => calls.push(mode), restrict: mask => calls.push(mask), guard: value => guard = value, register: value => tool = value },
-    systemPrompt: { section: value => section = value }, get: () => ({ authorizeSession: async () => true }), on: (name, value) => { assert.equal(name, 'agent/created'); listener = value; } });
+    systemPrompt: { section: value => section = value }, effect: callback => callback(), get: () => ({ authorizeSession: async () => true }), on: (name, value) => { assert.equal(name, 'agent/created'); listener = value; } });
   assert.deepEqual(calls, ['native', { allow: [] }]);
   for (const name of ['bash', 'read', 'subagent', 'run_code', 'say', 'unknown']) assert.equal(typeof guard({ name }), 'string');
-  assert.equal(guard({ name: 'resident_workspace' }), undefined); assert.equal(tool.name, 'resident_workspace'); assert.equal(section.complete, true);
+  assert.equal(guard({ name: 'resident_workspace' }), undefined); assert.equal(tool, undefined); assert.equal(section.complete, true);
+  const ownContext = { tools: { register(value) { tool = value; return () => {}; } } };
   const events = [];
-  await listener({ agent: { session: { header: { agentPreset: HELPER_PRESET, cwd: '/authorized' }, append: (type, data) => events.push({ type, data }) } } });
+  await listener({ agent: { ctx: ownContext, session: { header: { agentPreset: HELPER_PRESET, cwd: '/authorized' }, append: (type, data) => events.push({ type, data }) } } });
+  assert.equal(tool.name, 'resident_workspace');
   assert.deepEqual(events.map(item => item.data), [{ mode: 'read-only' }, { policy: 'never' }]);
   await assert.rejects(listener({ agent: { session: { header: { cwd: '/authorized' }, append() {} } } }));
   const removed = [];
-  await listener({ source: 'resume', agent: { session: { header: { agentPreset: HELPER_PRESET, cwd: '/authorized' }, append() {} }, inbox: {
+  await listener({ source: 'resume', agent: { ctx: ownContext, session: { header: { agentPreset: HELPER_PRESET, cwd: '/authorized' }, append() {} }, inbox: {
     nextTurn: [{ id: 'old-cloud', source: { rpcId: 'aelios-job-old' } }, { id: 'human', source: { rpcId: 'human-rpc' } }],
     nextStep: [{ id: 'cloud-steer', source: { rpcId: 'aelios-job-steer' } }], remove: id => removed.push(id)
   } } });
